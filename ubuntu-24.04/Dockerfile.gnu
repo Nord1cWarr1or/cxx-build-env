@@ -116,6 +116,7 @@ RUN set -eu; \
     ./install_make.sh; \
     ./install_binutils.sh; \
     ./install_ninja.sh; \
+    ./install_mold.sh; \
     ./install_nasm.sh; \
     ./install_cppcheck.sh; \
     ./install_openssl.sh; \

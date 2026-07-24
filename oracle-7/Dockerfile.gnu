@@ -235,6 +235,7 @@ RUN set -eu; \
     ./install_ambuild.sh; \
     ./install_cmake.sh; \
     ./install_ninja.sh; \
+    ./install_mold.sh; \
     ./install_nasm.sh; \
     ./install_cppcheck.sh; \
     ./install_openssl.sh; \
