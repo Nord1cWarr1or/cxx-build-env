@@ -9,7 +9,7 @@ readonly CPPCHECK_VERSION="2.21.0"
 readonly GCC_VERSION="16.1.0"
 readonly MAKE_VERSION="4.4.1"
 readonly NASM_VERSION="3.02"
-readonly GOLANG_VERSION="1.26.5"
+readonly GOLANG_VERSION="1.27.1"
 readonly OPENSSL_VERSION="3.6.3"
 
 # Available compilers for each distribution
