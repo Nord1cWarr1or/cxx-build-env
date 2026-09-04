@@ -10,7 +10,7 @@ readonly GCC_VERSION="16.1.0"
 readonly MAKE_VERSION="4.4.1"
 readonly NASM_VERSION="3.02"
 readonly GOLANG_VERSION="1.27.1"
-readonly OPENSSL_VERSION="3.6.3"
+readonly OPENSSL_VERSION="3.6.4"
 
 # Available compilers for each distribution
 declare -A AVAILABLE_COMPILERS=(
