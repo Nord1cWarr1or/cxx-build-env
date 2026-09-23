@@ -72,6 +72,7 @@ RUN set -eu; \
     autoconf-archive \
     automake \
     bison \
+    binutils-gold \
     gdb \
     gdb-multiarch \
     gdbserver \

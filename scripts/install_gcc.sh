@@ -9,8 +9,12 @@ GCC_TAR_FILE="gcc.tar.gz"
 GCC_SRC_DIR="gcc-$GCC_VERSION"
 INITIAL_DIR="$(pwd)"
 
-# Download and extract source tarball
-wget -O "$GCC_TAR_FILE" "$GCC_URL"
+# Download and extract source tarball.
+# Skip the download when the tarball is already present (e.g. COPY'd into
+# the image by the build to avoid slow/broken GNU mirrors).
+if [ ! -f "$GCC_TAR_FILE" ]; then
+    wget -O "$GCC_TAR_FILE" "$GCC_URL"
+fi
 tar -xzf "$GCC_TAR_FILE"
 
 # Download prerequisites

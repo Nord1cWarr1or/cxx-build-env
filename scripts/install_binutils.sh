@@ -24,19 +24,27 @@ RANDOM_STRING="$(generate_random_string)"
 BINUTILS_BUILD_DIR="$BINUTILS_SRC_DIR/build-$RANDOM_STRING"
 mkdir -p "$BINUTILS_BUILD_DIR"
 
-# Configure build
+# Configure build.
+# gprofng (added in binutils 2.39) requires bison >= 3.0.4, which build
+# containers do not ship; it is irrelevant for a toolchain image.
+# NOTE: gold was removed from binutils in 2.44 — ld.gold is installed
+# separately by scripts/install_gold.sh.
 cd "$BINUTILS_BUILD_DIR"
 ../configure \
     --prefix="$BINUTILS_PREFIX" \
     --program-prefix="$BINUTILS_PROGRAM_PREFIX" \
     --enable-ld=yes \
     --enable-multilib \
+    --disable-gprofng \
     --disable-nls \
     --disable-werror
 
-# Build and install
-make -j"$(nproc)"
-make install
+# Build and install.
+# MAKEINFO=true: build containers ship no texinfo; when the tarball's
+# prebuilt docs look stale, make would otherwise try to regenerate
+# bfd.info with a missing makeinfo and die with exit 127.
+make -j"$(nproc)" MAKEINFO=true
+make install MAKEINFO=true
 ldconfig
 
 # Cleanup

@@ -1,20 +1,29 @@
 #!/bin/bash
 set -euo pipefail
 
-# Define variables
-readonly BINUTILS_VERSION="2.47"
-readonly CLANG_VERSION="20"
-readonly CMAKE_VERSION="3.31.12"
-readonly CPPCHECK_VERSION="2.21.0"
-readonly GCC_VERSION="16.2.0"
-readonly MAKE_VERSION="4.4.1"
-readonly NASM_VERSION="3.02"
-readonly GOLANG_VERSION="1.27.1"
-readonly OPENSSL_VERSION="3.6.4"
+# Define variables.
+# Every version can be overridden via the environment, e.g.:
+#   BINUTILS_VERSION=2.40 ./build.sh -d oracle-7 -c gnu -t my-tag
+# This makes it possible to build image variants without editing the script
+# (e.g. a binutils 2.40 build for projects whose author flags are incompatible
+# with binutils >= 2.41 relocation strictness).
+BINUTILS_VERSION="${BINUTILS_VERSION:-2.47}"
+CLANG_VERSION="${CLANG_VERSION:-20}"
+CMAKE_VERSION="${CMAKE_VERSION:-3.31.12}"
+CPPCHECK_VERSION="${CPPCHECK_VERSION:-2.21.0}"
+GCC_VERSION="${GCC_VERSION:-16.2.0}"
+MAKE_VERSION="${MAKE_VERSION:-4.4.1}"
+NASM_VERSION="${NASM_VERSION:-3.02}"
+GOLANG_VERSION="${GOLANG_VERSION:-1.27.1}"
+OPENSSL_VERSION="${OPENSSL_VERSION:-3.6.4}"
+# ld.gold is built from the last gold-capable binutils release (see
+# scripts/install_gold.sh); gold itself was removed from binutils 2.44+.
+GOLD_VERSION="${GOLD_VERSION:-2.43}"
 
 # Available compilers for each distribution
 declare -A AVAILABLE_COMPILERS=(
     ["oracle-7"]="gnu"
+    ["debian-11"]="gnu"
     ["ubuntu-24.04"]="gnu clang"
 )
 
@@ -65,10 +74,22 @@ Options:
 
   -h, --help
         Show this help message and exit.
+
+Version overrides (environment variables):
+  Every tool version can be overridden without editing this script:
+
+    BINUTILS_VERSION=2.40 ./build.sh -d oracle-7 -c gnu -t my-tag
+
+  Variables: BINUTILS_VERSION, CLANG_VERSION, CMAKE_VERSION, CPPCHECK_VERSION,
+  GCC_VERSION, MAKE_VERSION, NASM_VERSION, GOLANG_VERSION, OPENSSL_VERSION,
+  GOLD_VERSION (ld.gold side-build, see scripts/install_gold.sh).
 EOF
 }
 
-# Build a Docker image based on a given distro with a specific compiler and tag
+# Build a Docker image based on a given distro with a specific compiler and tag.
+# On docker builds without BuildKit, `COPY "../scripts"` is rejected
+# ("forbidden path outside the build context"); in that case the build is
+# retried with a context-root-relative COPY, which the legacy builder accepts.
 build_image() {
     local distro="$1"
     local compiler="$2"
@@ -78,7 +99,10 @@ build_image() {
     print_info \
         "Building Docker image based on distro $distro with compiler $compiler."
 
-    docker build \
+    local buildlog
+    buildlog="$(mktemp /tmp/cxx-build-env.XXXXXX.log)"
+
+    if docker build \
         --build-arg BINUTILS_VERSION="$BINUTILS_VERSION" \
         --build-arg CLANG_VERSION="$CLANG_VERSION" \
         --build-arg CMAKE_VERSION="$CMAKE_VERSION" \
@@ -88,7 +112,39 @@ build_image() {
         --build-arg NASM_VERSION="$NASM_VERSION" \
         --build-arg GOLANG_VERSION="$GOLANG_VERSION" \
         --build-arg OPENSSL_VERSION="$OPENSSL_VERSION" \
-        --file "$dockerfile" --tag "$tag" .
+        --build-arg GOLD_VERSION="$GOLD_VERSION" \
+        --file "$dockerfile" --tag "$tag" . 2>&1 | tee "$buildlog"
+    then
+        rm -f "$buildlog"
+        return 0
+    fi
+
+    if grep -q "forbidden path outside the build context" "$buildlog"; then
+        print_warning \
+            "Legacy docker builder detected. Retrying with a context-relative COPY."
+        local tmp_dockerfile
+        tmp_dockerfile="$(mktemp /tmp/cxx-build-env.Dockerfile.XXXXXX)"
+        sed 's|COPY "../scripts"|COPY "scripts"|g' "$dockerfile" > "$tmp_dockerfile"
+
+        docker build \
+            --build-arg BINUTILS_VERSION="$BINUTILS_VERSION" \
+            --build-arg CLANG_VERSION="$CLANG_VERSION" \
+            --build-arg CMAKE_VERSION="$CMAKE_VERSION" \
+            --build-arg CPPCHECK_VERSION="$CPPCHECK_VERSION" \
+            --build-arg GCC_VERSION="$GCC_VERSION" \
+            --build-arg MAKE_VERSION="$MAKE_VERSION" \
+            --build-arg NASM_VERSION="$NASM_VERSION" \
+            --build-arg GOLANG_VERSION="$GOLANG_VERSION" \
+            --build-arg OPENSSL_VERSION="$OPENSSL_VERSION" \
+        --build-arg GOLD_VERSION="$GOLD_VERSION" \
+            --file "$tmp_dockerfile" --tag "$tag" .
+        local rc=$?
+        rm -f "$tmp_dockerfile" "$buildlog"
+        return "$rc"
+    fi
+
+    rm -f "$buildlog"
+    return 1
 }
 
 # Build Docker images with all available compilers for the specified distribution

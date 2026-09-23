@@ -8,16 +8,20 @@ ARG DEVTOOLSET_DIR="/home/devtoolset"
 # Base image
 FROM hun1er/oracle-7-cxx-build-env-gnu AS builder
 
-# Build-time variables
+# Build-time variables.
+# NOTE: prefix ARG defaults are inlined literals, not "$DEVTOOLSET_DIR/..."
+# references — chained ARG defaults do not expand on the legacy docker builder.
+# Global-scope ARGs are not visible inside stages, so they are declared here.
 ARG BINUTILS_VERSION \
     CMAKE_VERSION \
     DEVTOOLSET_DIR \
     GCC_VERSION \
     MAKE_VERSION \
+    GOLD_VERSION \
     BUILDER_DEVTOOLSET_VERSION="16" \
-    BINUTILS_PREFIX="$DEVTOOLSET_DIR/root/usr" \
-    GCC_PREFIX="$BINUTILS_PREFIX" \
-    MAKE_PREFIX="$BINUTILS_PREFIX"
+    BINUTILS_PREFIX="/home/devtoolset/root/usr" \
+    GCC_PREFIX="/home/devtoolset/root/usr" \
+    MAKE_PREFIX="/home/devtoolset/root/usr"
 
 # Copy scripts to container
 COPY "../scripts" "/tmp"
@@ -38,6 +42,10 @@ RUN set -eu; \
     \
     # Switch to temp directory
     cd /tmp; \
+    \
+    # Force IPv4 for yum: vault.ius.io and mirror CDN endpoints sometimes
+    # resolve to IPv6 addresses that are unreachable on IPv4-only build hosts
+    echo "ip_resolve=4" >> /etc/yum.conf; \
     \
     # Update system
     yum clean all; \
@@ -61,6 +69,7 @@ RUN set -eu; \
     # Execute setup scripts
     ./install_make.sh; \
     ./install_binutils.sh; \
+    ./install_gold.sh; \
     ./install_gcc.sh; \
     \
     # System cleanup
@@ -107,6 +116,10 @@ RUN set -eu; \
     # Create working directory and switch to temp directory
     mkdir -p "$APP_DIR"; \
     cd /tmp; \
+    \
+    # Force IPv4 for yum (see stage 1); vault.ius.io and CDN endpoints
+    # advertise AAAA records that are unreachable on some build hosts
+    echo "ip_resolve=4" >> /etc/yum.conf; \
     \
     # Add repositories
     yum clean all; \
