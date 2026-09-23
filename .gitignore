@@ -671,3 +671,6 @@ FodyWeavers.xsd
 #####################
 
 artifacts/
+
+# csbuild local build cache (pre-downloaded tarballs for image builds)
+.csbuild-cache/
