@@ -15,6 +15,11 @@
 #   -i, --image <img>   Container image (default: hun1er/oracle-7-cxx-build-env-gnu:latest)
 #   -j, --jobs <n>      Parallel build jobs (default: all CPU cores)
 #   -m, --mount h:c     Extra bind mount host:container (repeatable)
+#   -e, --env K=V       Environment variable for the build container (repeatable),
+#                       e.g. -e CXXFLAGS="-g -O0"
+#   -t, --target <name> Build a single target (cmake --build --target / make goal)
+#       --config <name> Multi-config flavor for preset builds: release (default),
+#                       debug, reldebinfo...
 #   -c, --clean         Remove the build directory before building
 #       --fresh         Re-clone URL targets from scratch
 #   -n, --dry-run       Show the detected build recipe and exit
@@ -71,6 +76,9 @@ FRESH=0
 DRY_RUN=0
 EXTRA=()
 MOUNTS=()
+ENVS=()
+TARGET=""
+FLAVOR="release"
 
 # ---------------------------------------------------------------------------
 # Option parsing: everything after "--" goes to the inner build command.
@@ -90,6 +98,9 @@ parse_options() {
             -i|--image) IMAGE="$2"; IMAGE_EXPLICIT=1; shift 2 ;;
             -j|--jobs)  JOBS="$2"; shift 2 ;;
             -m|--mount) MOUNTS+=("$2"); shift 2 ;;
+            -e|--env)   ENVS+=("$2"); shift 2 ;;
+            -t|--target) TARGET="$2"; shift 2 ;;
+            --config)   FLAVOR="$2"; shift 2 ;;
             -c|--clean) CLEAN=1; shift ;;
             --fresh)    FRESH=1; shift ;;
             -n|--dry-run) DRY_RUN=1; shift ;;
@@ -197,9 +208,9 @@ detect_recipe() {
     if [[ -f "$src/CMakeLists.txt" ]]; then
         tc="$(find_toolchain "$src")"
         if [[ -f "$src/CMakePresets.json" ]]; then
-            printf '%s\n' "cd /src && P=\$(cmake --list-presets | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && SEL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | head -n1) ; REL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | grep -iE 'release' | head -n1) ; SEL=\${REL:-\${SEL:-\$(printf '%s\n' \"\$P\" | head -n1)}} ; B=\$(cmake --list-presets=build | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && BSEL=\$(printf '%s\n' \"\$B\" | grep -Fx \"\${SEL}-release\" | head -n1) ; BSEL=\${BSEL:-\$(printf '%s\n' \"\$B\" | grep -Fx \"\$SEL\" | head -n1)} ; BSEL=\${BSEL:-\$SEL} ; printf 'Using CMake presets: %s / build: %s\n' \"\$SEL\" \"\$BSEL\" >&2 ; cmake --preset \"\$SEL\"$(quote_extra) && cmake --build --preset \"\$BSEL\" --parallel $JOBS"
+            printf '%s\n' "cd /src && P=\$(cmake --list-presets | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && SEL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | head -n1) ; REL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | grep -iE 'release' | head -n1) ; SEL=\${REL:-\${SEL:-\$(printf '%s\n' \"\$P\" | head -n1)}} ; B=\$(cmake --list-presets=build | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && BSEL=\$(printf '%s\n' \"\$B\" | grep -Fx \"\${SEL}-${FLAVOR}\" | head -n1) ; BSEL=\${BSEL:-\$(printf '%s\n' \"\$B\" | grep -Fx \"\$SEL\" | head -n1)} ; BSEL=\${BSEL:-\$SEL} ; printf 'Using CMake presets: %s / build: %s\n' \"\$SEL\" \"\$BSEL\" >&2 ; cmake --preset \"\$SEL\"$(quote_extra) && cmake --build --preset \"\$BSEL\" --parallel $JOBS${TARGET:+ --target $TARGET}"
         else
-            echo "cd /src && cmake -B build -S . ${tc:+-DCMAKE_TOOLCHAIN_FILE=$tc }$(quote_extra) && cmake --build build -j $JOBS"
+            echo "cd /src && cmake -B build -S . ${tc:+-DCMAKE_TOOLCHAIN_FILE=$tc }$(quote_extra) && cmake --build build -j $JOBS${TARGET:+ --target $TARGET}"
         fi
         return 0
     fi
@@ -217,7 +228,7 @@ detect_recipe() {
     # 6. Root Makefile (metamod-plugin style one-shot: botaim_plugin,
     #    CrossAuth, HTTP-Resources-Manager, ReInfoZone).
     if [[ -f "$src/Makefile" ]]; then
-        echo "cd /src && make -j $JOBS$(quote_extra)"
+        echo "cd /src && make -j $JOBS${TARGET:+ $TARGET}$(quote_extra)"
         return 0
     fi
 
@@ -229,15 +240,15 @@ detect_recipe() {
         sub="$(basename "$d")"
         case "$sub" in .*|Release|out) continue ;; esac
         if [[ -f "$d/Makefile" ]]; then
-            echo "cd /src/$sub && make -j $JOBS$(quote_extra)"
+            echo "cd /src/$sub && make -j $JOBS${TARGET:+ $TARGET}$(quote_extra)"
             return 0
         fi
         if [[ -f "$d/CMakeLists.txt" ]]; then
             tc="$(find_toolchain "$d")"
             if [[ -f "$d/CMakePresets.json" ]]; then
-                printf '%s\n' "cd /src/$sub && P=\$(cmake --list-presets | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && SEL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | head -n1) ; REL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | grep -iE 'release' | head -n1) ; SEL=\${REL:-\${SEL:-\$(printf '%s\n' \"\$P\" | head -n1)}} ; B=\$(cmake --list-presets=build | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && BSEL=\$(printf '%s\n' \"\$B\" | grep -Fx \"\${SEL}-release\" | head -n1) ; BSEL=\${BSEL:-\$(printf '%s\n' \"\$B\" | grep -Fx \"\$SEL\" | head -n1)} ; BSEL=\${BSEL:-\$SEL} ; printf 'Using CMake presets: %s / build: %s\n' \"\$SEL\" \"\$BSEL\" >&2 ; cmake --preset \"\$SEL\"$(quote_extra) && cmake --build --preset \"\$BSEL\" --parallel $JOBS"
+                printf '%s\n' "cd /src/$sub && P=\$(cmake --list-presets | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && SEL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | head -n1) ; REL=\$(printf '%s\n' \"\$P\" | grep -E 'gcc.*linux|linux.*gcc' | grep -iE 'release' | head -n1) ; SEL=\${REL:-\${SEL:-\$(printf '%s\n' \"\$P\" | head -n1)}} ; B=\$(cmake --list-presets=build | sed -n 's/^[[:space:]]*\"\([^\"]*\)\".*\$/\1/p') && BSEL=\$(printf '%s\n' \"\$B\" | grep -Fx \"\${SEL}-${FLAVOR}\" | head -n1) ; BSEL=\${BSEL:-\$(printf '%s\n' \"\$B\" | grep -Fx \"\$SEL\" | head -n1)} ; BSEL=\${BSEL:-\$SEL} ; printf 'Using CMake presets: %s / build: %s\n' \"\$SEL\" \"\$BSEL\" >&2 ; cmake --preset \"\$SEL\"$(quote_extra) && cmake --build --preset \"\$BSEL\" --parallel $JOBS${TARGET:+ --target $TARGET}"
             else
-                echo "cd /src/$sub && cmake -B build -S . ${tc:+-DCMAKE_TOOLCHAIN_FILE=$tc }$(quote_extra) && cmake --build build -j $JOBS"
+                echo "cd /src/$sub && cmake -B build -S . ${tc:+-DCMAKE_TOOLCHAIN_FILE=$tc }$(quote_extra) && cmake --build build -j $JOBS${TARGET:+ --target $TARGET}"
             fi
             return 0
         fi
@@ -252,7 +263,7 @@ detect_recipe() {
         [[ -f "$m" ]] || continue
         sub="${m#"$src/"}"
         sub="${sub%/Makefile}"
-        echo "cd /src/$sub && make -j $JOBS$(quote_extra)"
+        echo "cd /src/$sub && make -j $JOBS${TARGET:+ $TARGET}$(quote_extra)"
         return 0
     done
 
@@ -328,9 +339,14 @@ run_in_container() {
     for m in "${MOUNTS[@]+${MOUNTS[@]}}"; do
         margs+=(-v "$m")
     done
+    local -a eargs=()
+    for e in "${ENVS[@]+${ENVS[@]}}"; do
+        eargs+=(-e "$e")
+    done
     docker run --rm -t \
         -u "$(id -u):$(id -g)" \
         -e HOME=/tmp \
+        "${eargs[@]}" \
         "${margs[@]}" \
         -v "$src":/src \
         -w /src \
@@ -381,7 +397,7 @@ collect_artifacts() {
 build_one() {
     local target="$1" src inner marker out
 
-    src="$(resolve_target "$target")"
+    src="$(resolve_target "$target")" || return 1
     print_step "Project root: $src"
 
     if [[ $CLEAN -eq 1 && -d "$src/build" ]]; then

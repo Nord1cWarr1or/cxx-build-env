@@ -76,6 +76,9 @@ Variables: `BINUTILS_VERSION`, `CLANG_VERSION`, `CMAKE_VERSION`, `CPPCHECK_VERSI
 | `-i, --image <img>` | Container image (default: `hun1er/oracle-7-cxx-build-env-gnu:latest`) |
 | `-j, --jobs <n>` | Parallel jobs (default: all CPU cores) |
 | `-m, --mount <h:c>` | Extra bind mount, host:container (repeatable) |
+| `-e, --env K=V` | Environment variable for the build container (repeatable) |
+| `-t, --target <name>` | Build a single target (`cmake --build --target` / make goal) |
+| `--config <name>` | Multi-config flavor for CMake preset builds: `release` (default), `debug`, `reldebinfo`… — picks the matching build preset (rehlds-m: `ninja-gcc-linux-reldebinfo`) |
 | `-c, --clean` | Remove the build directory before building |
 | `--fresh` | Re-clone URL targets from scratch |
 | `-n, --dry-run` | Print the detected recipe and exit |
@@ -92,6 +95,8 @@ git clone https://github.com/alliedmodders/hlsdk hlsdk
 ```
 
 Environment variables: `CSBUILD_IMAGE` (same as `--image`), `CSBUILD_HOME` (clone directory, default `${XDG_CACHE_HOME:-~/.cache}/csbuild/clones`).
+
+Custom build flags go through `--` — the arguments land in the configure command (`cmake -DCMAKE_BUILD_TYPE=Debug`, `make CXXFLAGS=-g`, AMBuild `configure.py` options). `-e` injects environment variables (`CXXFLAGS`, `CFLAGS`, `LDFLAGS`), `-t` restricts the build to one target.
 
 Batch-tested against 22 ecosystem projects: 18 build end-to-end. The remaining four are unsupportable by design — an icc-only toolchain (ReInfoZone), sources broken upstream (webserver_amxx, rezombie), and an MSVC-only layout linking against unvendored repositories (BMOD).
 

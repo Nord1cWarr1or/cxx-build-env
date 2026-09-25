@@ -76,6 +76,9 @@ BINUTILS_VERSION=2.40 ./build.sh -d oracle-7 -c gnu -t my-tag
 | `-i, --image <образ>` | Образ контейнера (по умолчанию: `hun1er/oracle-7-cxx-build-env-gnu:latest`) |
 | `-j, --jobs <n>` | Параллельные задачи (по умолчанию: все ядра) |
 | `-m, --mount <х:к>` | Дополнительный bind mount, хост:контейнер (повторяемая) |
+| `-e, --env К=З` | Переменная окружения для контейнера сборки (повторяемая) |
+| `-t, --target <имя>` | Собрать одну цель (`cmake --build --target` / цель make) |
+| `--config <имя>` | Флейвор мульти-конфигурационных CMake-пресетов: `release` (по умолчанию), `debug`, `reldebinfo`… — выбирает соответствующий build-пресет (rehlds-m: `ninja-gcc-linux-reldebinfo`) |
 | `-c, --clean` | Удалить каталог сборки перед сборкой |
 | `--fresh` | Переклонировать URL-цели с нуля |
 | `-n, --dry-run` | Показать определённый рецепт и выйти |
@@ -92,6 +95,8 @@ git clone https://github.com/alliedmodders/hlsdk hlsdk
 ```
 
 Переменные окружения: `CSBUILD_IMAGE` (аналог `--image`), `CSBUILD_HOME` (каталог клонов, по умолчанию `${XDG_CACHE_HOME:-~/.cache}/csbuild/clones`).
+
+Свои флаги сборки идут через `--` — аргументы попадают в команду конфигурирования (`cmake -DCMAKE_BUILD_TYPE=Debug`, `make CXXFLAGS=-g`, опции AMBuild `configure.py`). `-e` прокидывает переменные окружения (`CXXFLAGS`, `CFLAGS`, `LDFLAGS`), `-t` ограничивает сборку одной целью.
 
 Прогнано пакетом по 22 проектам экосистемы: 18 собираются от начала до конца. Оставшиеся четыре не собираются по design — тулчейн под icc (ReInfoZone), сломанные апстримы (webserver_amxx, rezombie) и MSVC-only раскладка со ссылками на невендоренные репозитории (BMOD).
 
